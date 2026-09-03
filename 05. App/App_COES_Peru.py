@@ -776,11 +776,6 @@ def tab_cruce():
     st.plotly_chart(fig2, width="stretch")
 
     st.markdown("##### Perfil horario típico del período")
-    st.caption("Misma lógica que el 'perfil horario típico' de Generacion_lookup_Peru.py: para cada "
-               "(mes, hora) se promedia entre los años del período (ej. la hora 1 de enero de todos los "
-               "años elegidos), y esos 12 valores típicos por hora (uno por mes) se suman para Generación "
-               "(GWh, es energía -> se suma) y se promedian para el Precio promedio simple (USD real/MWh, "
-               "no se suma un precio).")
 
     # Paso 1: sumar por dia dentro de cada (anio, mes, hora) - o promediar para precio, que no es aditivo.
     paso1_gen = detalle.groupby(["anio", "mes", "hora"], as_index=False)["generacion_mwh"].sum()
@@ -815,9 +810,7 @@ def tab_cruce():
     cp.metric("Punta (19-23h)", f"{pct_punta:.0%}")
 
     st.markdown("##### Perfil mensual-horario típico del período")
-    st.caption("Mismo 'típico' (promedio entre años, por mes-hora) que el gráfico anterior, pero sin "
-               "sumar/promediar entre meses: se grafican los 12 meses x 24 horas seguidos. "
-               "Avenida: diciembre-abril · Estiaje: mayo-noviembre.")
+    st.caption("Avenida: diciembre-abril · Estiaje: mayo-noviembre.")
 
     MESES_NOMBRE = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio",
                     "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
