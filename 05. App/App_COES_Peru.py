@@ -879,9 +879,8 @@ def tab_cruce():
 
 # --------------------------------- main ---------------------------------
 
-st.set_page_config(page_title="COES Perú - M&A", layout="wide")
-st.title("COES Perú — CMg / Generación / Cruce")
-st.caption("Lee de la base ya publicada (04. Base de datos/_base). No consulta al COES en vivo.")
+st.set_page_config(page_title="Información Histórica Perú", layout="wide")
+st.title("Información Histórica Perú — Gx y CMg")
 
 tab1, tab2, tab3 = st.tabs(["CMg", "Generación", "Cruce"])
 with tab1:
