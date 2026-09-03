@@ -588,7 +588,6 @@ def tab_generacion():
     )
 
     st.subheader(f"Generación {etiqueta_gran} (GWh) y Factor de planta (%)")
-    st.caption("Un gráfico independiente por grupo (como en Gráficos usuales.pptx).")
     categorias_orden = sorted(tabla["Período"].unique())
     for grupo in grupos:
         sub = tabla[tabla["grupo"] == grupo].sort_values("Período")
