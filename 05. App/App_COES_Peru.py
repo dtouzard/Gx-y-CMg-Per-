@@ -552,7 +552,17 @@ def tab_generacion():
     def _tabla_agregada(cols_grupo_tiempo):
         g = datos.groupby(cols_grupo_tiempo + ["grupo"])
         gen = g["generacion_mwh"].sum().rename("Generación (MWh)")
-        horas = g.size().rename("horas")
+        # OJO: "horas" tiene que ser la cantidad de horas CALENDARIO del
+        # período (para eso sirve en el factor de planta), no la cantidad
+        # de filas. Cuando "grupo" junta varias centrales (Tecnología o
+        # Total), datos tiene una fila POR CENTRAL en cada hora -> g.size()
+        # las cuenta todas juntas y duplica/triplica las horas según
+        # cuántas centrales haya en el grupo, dividiendo el factor de
+        # planta de más (bug real: 2 centrales con FP individual 47%/44%
+        # daban 23% combinadas, justo la mitad). nunique() de fecha_hora
+        # cuenta cada hora una sola vez sin importar cuántas centrales
+        # tengan datos ahí.
+        horas = g["fecha_hora"].nunique().rename("horas")
         t = pd.concat([gen, horas], axis=1).reset_index()
         t["Generación (GWh)"] = t["Generación (MWh)"] / 1000.0
         t["Potencia (MW)"] = t["grupo"].map(potencia_por_grupo)
