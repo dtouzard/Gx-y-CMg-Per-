@@ -52,6 +52,7 @@ Correr (TERMINAL, desde esta carpeta o indicando la ruta completa):
 
 import io
 import os
+import re
 import sys
 import glob
 import math
@@ -663,10 +664,20 @@ def tab_cruce():
     if not opciones_central:
         st.info("Esa empresa no tiene centrales publicadas en la base.")
         return
+    tecnologias_disp = sorted({dicc.loc[c, "Tecnología"] for c in opciones_central if c in dicc.index})
 
     with st.form("cruce_form"):
+        agrupar_por_sel = st.radio(
+            "Agrupar por", ["Central", "Tecnología"], horizontal=True, key="cruce_agrupar_sel",
+            help="'Central': cruzás una central puntual. 'Tecnología': suma TODAS las centrales de esa "
+                 "tecnología (dentro de la empresa elegida) contra UNA sola barra de referencia - "
+                 "aproximación razonable si están cerca geográficamente, no un cruce exacto por central.")
         c1, c2 = st.columns(2)
-        central_sel = c1.selectbox("Central", opciones_central, key="cruce_central_sel")
+        if agrupar_por_sel == "Central":
+            grupo_sel = c1.selectbox("Central", opciones_central, key="cruce_central_sel")
+        else:
+            grupo_sel = c1.selectbox("Tecnología", tecnologias_disp, key="cruce_tec_sel") if tecnologias_disp \
+                else None
         barra_sel = c2.selectbox("Barra (CMg)", barras_disp, key="cruce_barra_sel")
         fecha_base_sel = st.selectbox(
             "Fecha base (USD real)", etiquetas_meses, index=len(etiquetas_meses) - 1,
@@ -683,21 +694,32 @@ def tab_cruce():
     if enviado:
         anio_ini_v, mes_ini_v = (int(x) for x in ini_sel.split("-"))
         anio_fin_v, mes_fin_v = (int(x) for x in fin_sel.split("-"))
-        if (anio_ini_v, mes_ini_v) > (anio_fin_v, mes_fin_v):
+        if grupo_sel is None:
+            st.error("No hay tecnologías disponibles para esa empresa (ninguna central tiene match en el "
+                      "Diccionario de Potencia).")
+        elif (anio_ini_v, mes_ini_v) > (anio_fin_v, mes_fin_v):
             st.error("El período 'Desde' no puede ser posterior a 'Hasta'.")
         else:
+            if agrupar_por_sel == "Central":
+                centrales_v = [grupo_sel]
+                etiqueta_grupo_v = grupo_sel
+            else:
+                centrales_v = [c for c in opciones_central
+                                if c in dicc.index and dicc.loc[c, "Tecnología"] == grupo_sel]
+                etiqueta_grupo_v = f"{grupo_sel} — {empresa}" if empresa != "(Todas)" else grupo_sel
             st.session_state["cruce_params"] = dict(
-                central=central_sel, barra=barra_sel, fecha_base_label=fecha_base_sel,
-                granularidad=granularidad_sel, anio_ini=anio_ini_v, mes_ini=mes_ini_v,
-                anio_fin=anio_fin_v, mes_fin=mes_fin_v,
+                centrales=centrales_v, etiqueta_grupo=etiqueta_grupo_v, agrupar_por=agrupar_por_sel,
+                barra=barra_sel, fecha_base_label=fecha_base_sel, granularidad=granularidad_sel,
+                anio_ini=anio_ini_v, mes_ini=mes_ini_v, anio_fin=anio_fin_v, mes_fin=mes_fin_v,
             )
 
     params = st.session_state.get("cruce_params")
     if not params:
-        st.info("Elegí Empresa, Central, Barra y el período, y apretá 'Calcular cruce'.")
+        st.info("Elegí Empresa, Central o Tecnología, Barra y el período, y apretá 'Calcular cruce'.")
         return
 
-    central = params["central"]
+    centrales_cruce = params["centrales"]
+    etiqueta_grupo = params["etiqueta_grupo"]
     barra = params["barra"]
     fecha_base_label = params["fecha_base_label"]
     granularidad = params["granularidad"]
@@ -705,14 +727,28 @@ def tab_cruce():
     anio_fin, mes_fin = params["anio_fin"], params["mes_fin"]
     fecha_base = tuple(int(x) for x in fecha_base_label.split("-"))
 
-    if central in dicc.index:
-        fila = dicc.loc[central]
-        st.caption(f"Capacidad instalada: **{fila['MW']:.2f} MW** · Tecnología: **{fila['Tecnología']}**")
+    potencia_grupo_mw = sum(float(dicc.loc[c, "MW"]) for c in centrales_cruce if c in dicc.index)
+    sin_potencia = [c for c in centrales_cruce if c not in dicc.index]
+    if params["agrupar_por"] == "Central":
+        if centrales_cruce[0] in dicc.index:
+            st.caption(f"Capacidad instalada: **{potencia_grupo_mw:.2f} MW** · "
+                       f"Tecnología: **{dicc.loc[centrales_cruce[0], 'Tecnología']}**")
+        else:
+            st.caption("Capacidad instalada: sin match en el Diccionario de Potencia.")
     else:
-        st.caption("Capacidad instalada: sin match en el Diccionario de Potencia.")
+        st.caption(f"Capacidad instalada conjunta: **{potencia_grupo_mw:.2f} MW** · "
+                   f"Centrales ({len(centrales_cruce)}): {', '.join(centrales_cruce)}")
+        if sin_potencia:
+            st.caption(f"Sin match en el Diccionario de Potencia (quedan fuera de la capacidad y del factor "
+                       f"de planta): {', '.join(sin_potencia)}")
 
     cmg_h = _cargar_cmg((barra,), anio_ini, mes_ini, anio_fin, mes_fin)[["fecha_hora", "cmg_usd_nominal", "cpi"]]
-    gx_h = _cargar_generacion((central,), anio_ini, mes_ini, anio_fin, mes_fin)
+    gx_h = _cargar_generacion(tuple(centrales_cruce), anio_ini, mes_ini, anio_fin, mes_fin)
+    if len(centrales_cruce) > 1:
+        # Varias centrales sumadas en una sola serie horaria (una barra de
+        # referencia para todo el grupo, ver ayuda de "Agrupar por").
+        gx_h = gx_h.groupby(["fecha_hora", "anio", "mes", "dia", "hora"],
+                             as_index=False)["generacion_mwh"].sum()
 
     cpi_mes = _cpi_por_mes()
     cpi_base = cpi_mes.get(fecha_base)
@@ -737,16 +773,19 @@ def tab_cruce():
     cols_grupo = _cols_grupo(granularidad)
     tabla = _agregar_periodo(_agregados_cruce(detalle, cols_grupo), granularidad)
 
-    horas_por_periodo = detalle.groupby(cols_grupo).size().rename("horas").reset_index()
+    # "horas" tiene que ser horas CALENDARIO, no filas -> nunique(), no
+    # size() (mismo bug que se encontró y arregló en Generación: si se
+    # suman varias centrales, size() las cuenta una vez por central y
+    # duplica/triplica el denominador del factor de planta).
+    horas_por_periodo = detalle.groupby(cols_grupo)["fecha_hora"].nunique().rename("horas").reset_index()
     tabla = tabla.merge(horas_por_periodo, on=cols_grupo)
-    if central in dicc.index:
-        potencia_mw_central = float(dicc.loc[central, "MW"])
-        tabla["Factor de planta"] = tabla["Generación (MWh)"] / (potencia_mw_central * tabla["horas"])
+    if potencia_grupo_mw > 0:
+        tabla["Factor de planta"] = tabla["Generación (MWh)"] / (potencia_grupo_mw * tabla["horas"])
     else:
         tabla["Factor de planta"] = None
 
     etiqueta_gran = "mensual" if granularidad == "Mes" else "anual"
-    st.subheader(f"{central} <-> {barra} — {etiqueta_gran}")
+    st.subheader(f"{etiqueta_grupo} <-> {barra} — {etiqueta_gran}")
 
     fig = go.Figure()
     fig.add_bar(x=tabla["Período"], y=tabla["Generación (MWh)"] / 1000.0, name="Generación (GWh)",
@@ -874,8 +913,9 @@ def tab_cruce():
         ("Mensual", mensual_completo.drop(columns=["anio", "mes"])),
         ("Anual", anual_completo.drop(columns=["anio"])),
     ])
+    nombre_archivo = re.sub(r"[^A-Za-z0-9]+", "_", etiqueta_grupo).strip("_")
     st.download_button("Descargar Excel", data=excel,
-                        file_name=f"Cruce_Ingresos_Peru_{central}.xlsx",
+                        file_name=f"Cruce_Ingresos_Peru_{nombre_archivo}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
