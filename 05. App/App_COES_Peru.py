@@ -908,10 +908,27 @@ def tab_cruce():
 
     mensual_completo = _agregar_periodo(_agregados_cruce(detalle, ["anio", "mes"]), "Mes")
     anual_completo = _agregar_periodo(_agregados_cruce(detalle, ["anio"]), "Año")
+
+    # Las 2 hojas de abajo son la data de los gráficos 3 y 4 (perfiles
+    # típicos), en formato listo para seleccionar y graficar en Excel
+    # (mismo orden que se ve en la app) - pedido de Dani 2026-09-08.
+    perfil_excel = perfil[["hora", "generacion_gwh", "cmg_usd_real"]].rename(columns={
+        "hora": "Hora", "generacion_gwh": "Generación (GWh)",
+        "cmg_usd_real": "Precio promedio simple (USD real/MWh)",
+    })
+    perfil_mensual_excel = perfil_mensual[["posicion", "mes", "hora", "generacion_gwh", "cmg_usd_real"]].copy()
+    perfil_mensual_excel["Mes"] = perfil_mensual_excel["mes"].map(lambda m: MESES_NOMBRE[m - 1])
+    perfil_mensual_excel = perfil_mensual_excel.rename(columns={
+        "posicion": "Orden", "hora": "Hora", "generacion_gwh": "Generación (GWh)",
+        "cmg_usd_real": "Precio promedio simple (USD real/MWh)",
+    })[["Orden", "Mes", "Hora", "Generación (GWh)", "Precio promedio simple (USD real/MWh)"]]
+
     excel = _excel_descargable([
         ("Detalle horario", detalle.sort_values("fecha_hora")),
         ("Mensual", mensual_completo.drop(columns=["anio", "mes"])),
         ("Anual", anual_completo.drop(columns=["anio"])),
+        ("Perfil horario típico", perfil_excel),
+        ("Perfil mensual-horario típico", perfil_mensual_excel),
     ])
     nombre_archivo = re.sub(r"[^A-Za-z0-9]+", "_", etiqueta_grupo).strip("_")
     st.download_button("Descargar Excel", data=excel,
